@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Guide } from '../types';
 
 interface NameScrollingProps {
@@ -16,15 +16,19 @@ export const NameScrolling: React.FC<NameScrollingProps> = ({
   winnerCount
 }) => {
   const [currentName, setCurrentName] = useState('');
-  const [phase, setPhase] = useState<'delay' | 'scrolling' | 'slowing'>('delay');
+  const [phase, setPhase] = useState<'delay' | 'scrolling' | 'selecting' | 'complete'>('delay');
   const [timeLeft, setTimeLeft] = useState(10);
+  const [selectedWinners, setSelectedWinners] = useState<Guide[]>([]);
+  const [currentWinnerIndex, setCurrentWinnerIndex] = useState(0);
 
   useEffect(() => {
     if (!isScrolling || guides.length === 0) return;
 
     setPhase('delay');
     setTimeLeft(10);
-    setCurrentName('Get ready for the magic...');
+    setSelectedWinners([]);
+    setCurrentWinnerIndex(0);
+    setCurrentName('🎪 Get ready for the magic... 🎪');
 
     // Countdown phase
     const countdownInterval = setInterval(() => {
@@ -35,6 +39,7 @@ export const NameScrolling: React.FC<NameScrollingProps> = ({
           startScrolling();
           return 0;
         }
+        setCurrentName(`🎲 Starting in ${prev - 1}... 🎲`);
         return prev - 1;
       });
     }, 1000);
@@ -42,52 +47,74 @@ export const NameScrolling: React.FC<NameScrollingProps> = ({
     const startScrolling = () => {
       let nameIndex = 0;
       let speed = 50;
+      let scrollDuration = 0;
       
       const scrollNames = () => {
         setCurrentName(guides[nameIndex].name);
         nameIndex = (nameIndex + 1) % guides.length;
+        scrollDuration += speed;
         
-        // Gradually slow down after 3 seconds
-        if (speed < 300) {
-          speed = Math.min(speed + 8, 300);
+        // Scroll for 5 seconds, then start selecting winners
+        if (scrollDuration >= 5000) {
+          setPhase('selecting');
+          selectWinnersWithDelay();
+          return;
         }
         
-        const timer = setTimeout(scrollNames, speed);
-        
-        // Stop after reaching max speed and select winners
-        if (speed >= 300) {
-          setPhase('slowing');
-          clearTimeout(timer);
-          setTimeout(() => {
-            // Weighted random selection logic
-            const winners: Guide[] = [];
-            const availableGuides = [...guides];
-            
-            for (let i = 0; i < winnerCount && availableGuides.length > 0; i++) {
-              const totalWeight = availableGuides.reduce((sum, guide) => sum + guide.totalTickets, 0);
-              let random = Math.random() * totalWeight;
-              
-              let selectedIndex = 0;
-              for (let j = 0; j < availableGuides.length; j++) {
-                random -= availableGuides[j].totalTickets;
-                if (random <= 0) {
-                  selectedIndex = j;
-                  break;
-                }
-              }
-              
-              const winner = availableGuides.splice(selectedIndex, 1)[0];
-              winners.push(winner);
-            }
-            
-            onComplete(winners);
-          }, 1000);
+        // Gradually increase speed for dramatic effect
+        if (speed < 100) {
+          speed = Math.min(speed + 5, 100);
         }
         
-        return timer;
+        setTimeout(scrollNames, speed);
       };
 
       scrollNames();
+    };
+
+    const selectWinnersWithDelay = () => {
+      // Pre-calculate all winners using weighted selection
+      const winners: Guide[] = [];
+      const availableGuides = [...guides];
+      
+      for (let i = 0; i < winnerCount && availableGuides.length > 0; i++) {
+        const totalWeight = availableGuides.reduce((sum, guide) => sum + guide.totalTickets, 0);
+        let random = Math.random() * totalWeight;
+        
+        let selectedIndex = 0;
+        for (let j = 0; j < availableGuides.length; j++) {
+          random -= availableGuides[j].totalTickets;
+          if (random <= 0) {
+            selectedIndex = j;
+            break;
+          }
+        }
+        
+        const winner = availableGuides.splice(selectedIndex, 1)[0];
+        winners.push(winner);
+      }
+
+      setSelectedWinners(winners);
+      
+      // Reveal winners one by one with 15-second delays
+      const revealWinner = (index: number) => {
+        if (index >= winners.length) {
+          setPhase('complete');
+          setTimeout(() => {
+            onComplete(winners);
+          }, 2000);
+          return;
+        }
+
+        setCurrentWinnerIndex(index);
+        setCurrentName(`🏆 WINNER #${index + 1}: ${winners[index].name} 🏆`);
+        
+        setTimeout(() => {
+          revealWinner(index + 1);
+        }, 15000); // 15-second delay between winners
+      };
+
+      revealWinner(0);
     };
 
     return () => {
@@ -98,8 +125,8 @@ export const NameScrolling: React.FC<NameScrollingProps> = ({
   if (!isScrolling) return null;
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-purple-900/95 via-pink-900/95 to-blue-900/95 backdrop-blur-sm z-50 flex items-center justify-center">
-      <div className="text-center">
+    <div className="fixed inset-0 bg-gradient-to-br from-purple-900/95 via-pink-900/95 to-blue-900/95 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="text-center w-full max-w-4xl">
         <motion.div
           animate={{ 
             rotate: [0, 360],
@@ -121,7 +148,7 @@ export const NameScrolling: React.FC<NameScrollingProps> = ({
           </motion.div>
         </motion.div>
 
-        {phase === 'delay' ? (
+        {phase === 'delay' && (
           <motion.h2
             animate={{ 
               scale: [1, 1.05, 1],
@@ -132,11 +159,13 @@ export const NameScrolling: React.FC<NameScrollingProps> = ({
               ]
             }}
             transition={{ duration: 1, repeat: Infinity }}
-            className="text-5xl font-bold text-white mb-8"
+            className="text-4xl md:text-5xl font-bold text-white mb-8"
           >
             🎲 STARTING IN {timeLeft} 🎲
           </motion.h2>
-        ) : (
+        )}
+
+        {(phase === 'scrolling' || phase === 'selecting') && (
           <motion.h2
             animate={{ 
               scale: [1, 1.05, 1],
@@ -147,32 +176,106 @@ export const NameScrolling: React.FC<NameScrollingProps> = ({
               ]
             }}
             transition={{ duration: 1, repeat: Infinity }}
-            className="text-5xl font-bold text-white mb-8"
+            className="text-3xl md:text-4xl font-bold text-white mb-8"
           >
-            🎲 DRAWING WINNERS 🎲
+            {phase === 'scrolling' ? '🎰 DRAWING WINNERS 🎰' : '🏆 SELECTING WINNERS 🏆'}
           </motion.h2>
         )}
 
-        <div className="bg-white/20 backdrop-blur-xl rounded-2xl p-8 border border-white/30 min-w-[500px] max-w-[600px]">
-          <motion.div
-            key={currentName}
-            initial={{ y: 50, opacity: 0, scale: 0.8 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: -50, opacity: 0, scale: 0.8 }}
-            transition={{ duration: 0.3 }}
-            className="text-2xl md:text-3xl font-bold text-white break-words leading-tight"
-          >
-            {currentName || 'Preparing...'}
-          </motion.div>
+        {/* Main Display Box */}
+        <div className="bg-white/20 backdrop-blur-xl rounded-3xl p-8 md:p-12 border border-white/30 shadow-2xl min-h-[200px] flex items-center justify-center">
+          <div className="w-full">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentName + phase}
+                initial={{ 
+                  x: phase === 'scrolling' ? (Math.random() > 0.5 ? -100 : 100) : 0,
+                  y: phase === 'scrolling' ? (Math.random() > 0.5 ? -20 : 20) : 50,
+                  opacity: 0, 
+                  scale: 0.8,
+                  rotateX: phase === 'scrolling' ? 90 : 0
+                }}
+                animate={{ 
+                  x: 0,
+                  y: 0,
+                  opacity: 1, 
+                  scale: phase === 'selecting' ? 1.1 : 1,
+                  rotateX: 0
+                }}
+                exit={{ 
+                  x: phase === 'scrolling' ? (Math.random() > 0.5 ? 100 : -100) : 0,
+                  y: phase === 'scrolling' ? (Math.random() > 0.5 ? 20 : -20) : -50,
+                  opacity: 0, 
+                  scale: 0.8,
+                  rotateX: phase === 'scrolling' ? -90 : 0
+                }}
+                transition={{ 
+                  duration: phase === 'scrolling' ? 0.2 : 0.6,
+                  type: phase === 'selecting' ? "spring" : "tween",
+                  stiffness: phase === 'selecting' ? 100 : undefined,
+                  damping: phase === 'selecting' ? 15 : undefined
+                }}
+                className="text-center"
+              >
+                <div className={`font-bold text-white leading-tight px-4 ${
+                  phase === 'selecting' 
+                    ? 'text-2xl md:text-4xl bg-gradient-to-r from-yellow-300 to-orange-300 bg-clip-text text-transparent' 
+                    : 'text-xl md:text-3xl'
+                }`}>
+                  {currentName || 'Preparing...'}
+                </div>
+                
+                {phase === 'selecting' && selectedWinners[currentWinnerIndex] && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.5 }}
+                    className="mt-4 text-lg text-blue-200"
+                  >
+                    {selectedWinners[currentWinnerIndex].department} • {selectedWinners[currentWinnerIndex].totalTickets} tickets
+                  </motion.div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
 
-        <motion.p
+        <motion.div
           animate={{ opacity: [0.5, 1, 0.5] }}
           transition={{ duration: 1.5, repeat: Infinity }}
           className="text-white/80 mt-6 text-lg"
         >
-          {phase === 'delay' ? '✨ Building suspense... ✨' : '✨ The magic is happening... ✨'}
-        </motion.p>
+          {phase === 'delay' && '✨ Building suspense... ✨'}
+          {phase === 'scrolling' && '✨ The magic is happening... ✨'}
+          {phase === 'selecting' && `✨ Revealing winner ${currentWinnerIndex + 1} of ${winnerCount}... ✨`}
+          {phase === 'complete' && '🎉 All winners selected! 🎉'}
+        </motion.div>
+
+        {phase === 'selecting' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-6"
+          >
+            <div className="flex justify-center space-x-2">
+              {Array.from({ length: winnerCount }).map((_, index) => (
+                <div
+                  key={index}
+                  className={`w-3 h-3 rounded-full transition-all duration-500 ${
+                    index < currentWinnerIndex 
+                      ? 'bg-green-400 shadow-lg' 
+                      : index === currentWinnerIndex 
+                        ? 'bg-yellow-400 shadow-lg animate-pulse' 
+                        : 'bg-white/30'
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="text-white/60 text-sm mt-2">
+              Winner {currentWinnerIndex + 1} of {winnerCount}
+            </p>
+          </motion.div>
+        )}
       </div>
     </div>
   );
