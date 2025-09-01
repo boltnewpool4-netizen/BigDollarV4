@@ -38,10 +38,22 @@ export const useWinners = () => {
 
   const purgeWinners = async () => {
     try {
+      // First, get all winner IDs to ensure we're deleting something
+      const { data: existingWinners, error: fetchError } = await supabase
+        .from('winners')
+        .select('id');
+
+      if (fetchError) throw fetchError;
+      
+      if (!existingWinners || existingWinners.length === 0) {
+        return; // No winners to delete
+      }
+
+      // Delete all records
       const { error } = await supabase
         .from('winners')
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all records
+        .gte('created_at', '1900-01-01'); // Delete all records (using a condition that matches all)
 
       if (error) throw error;
       await fetchWinners(); // Refresh the list

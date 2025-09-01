@@ -16,57 +16,83 @@ export const NameScrolling: React.FC<NameScrollingProps> = ({
   winnerCount
 }) => {
   const [currentName, setCurrentName] = useState('');
-  const [scrollSpeed, setScrollSpeed] = useState(50);
+  const [phase, setPhase] = useState<'delay' | 'scrolling' | 'slowing'>('delay');
+  const [timeLeft, setTimeLeft] = useState(10);
 
   useEffect(() => {
     if (!isScrolling || guides.length === 0) return;
 
-    let nameIndex = 0;
-    let speed = 50;
-    
-    const scrollNames = () => {
-      setCurrentName(guides[nameIndex].name);
-      nameIndex = (nameIndex + 1) % guides.length;
+    setPhase('delay');
+    setTimeLeft(10);
+    setCurrentName('Get ready for the magic...');
+
+    // Countdown phase
+    const countdownInterval = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          setPhase('scrolling');
+          startScrolling();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    const startScrolling = () => {
+      let nameIndex = 0;
+      let speed = 50;
       
-      // Gradually slow down
-      speed = Math.min(speed + 5, 300);
-      
-      const timer = setTimeout(scrollNames, speed);
-      
-      // Stop after 3 seconds and select winners
-      if (speed >= 300) {
-        clearTimeout(timer);
-        setTimeout(() => {
-          // Weighted random selection logic here
-          const winners: Guide[] = [];
-          const availableGuides = [...guides];
-          
-          for (let i = 0; i < winnerCount && availableGuides.length > 0; i++) {
-            const totalWeight = availableGuides.reduce((sum, guide) => sum + guide.totalTickets, 0);
-            let random = Math.random() * totalWeight;
+      const scrollNames = () => {
+        setCurrentName(guides[nameIndex].name);
+        nameIndex = (nameIndex + 1) % guides.length;
+        
+        // Gradually slow down after 3 seconds
+        if (speed < 300) {
+          speed = Math.min(speed + 8, 300);
+        }
+        
+        const timer = setTimeout(scrollNames, speed);
+        
+        // Stop after reaching max speed and select winners
+        if (speed >= 300) {
+          setPhase('slowing');
+          clearTimeout(timer);
+          setTimeout(() => {
+            // Weighted random selection logic
+            const winners: Guide[] = [];
+            const availableGuides = [...guides];
             
-            let selectedIndex = 0;
-            for (let j = 0; j < availableGuides.length; j++) {
-              random -= availableGuides[j].totalTickets;
-              if (random <= 0) {
-                selectedIndex = j;
-                break;
+            for (let i = 0; i < winnerCount && availableGuides.length > 0; i++) {
+              const totalWeight = availableGuides.reduce((sum, guide) => sum + guide.totalTickets, 0);
+              let random = Math.random() * totalWeight;
+              
+              let selectedIndex = 0;
+              for (let j = 0; j < availableGuides.length; j++) {
+                random -= availableGuides[j].totalTickets;
+                if (random <= 0) {
+                  selectedIndex = j;
+                  break;
+                }
               }
+              
+              const winner = availableGuides.splice(selectedIndex, 1)[0];
+              winners.push(winner);
             }
             
-            const winner = availableGuides.splice(selectedIndex, 1)[0];
-            winners.push(winner);
-          }
-          
-          onComplete(winners);
-        }, 500);
-      }
-      
-      return timer;
+            onComplete(winners);
+          }, 1000);
+        }
+        
+        return timer;
+      };
+
+      scrollNames();
     };
 
-    const timer = scrollNames();
-    return () => clearTimeout(timer);
+    return () => {
+      clearInterval(countdownInterval);
+    };
   }, [isScrolling, guides, onComplete, winnerCount]);
 
   if (!isScrolling) return null;
@@ -95,29 +121,46 @@ export const NameScrolling: React.FC<NameScrollingProps> = ({
           </motion.div>
         </motion.div>
 
-        <motion.h2
-          animate={{ 
-            scale: [1, 1.05, 1],
-            textShadow: [
-              "0 0 20px rgba(255,255,255,0.5)",
-              "0 0 40px rgba(255,255,255,0.8)",
-              "0 0 20px rgba(255,255,255,0.5)"
-            ]
-          }}
-          transition={{ duration: 1, repeat: Infinity }}
-          className="text-5xl font-bold text-white mb-8"
-        >
-          🎲 DRAWING WINNERS 🎲
-        </motion.h2>
+        {phase === 'delay' ? (
+          <motion.h2
+            animate={{ 
+              scale: [1, 1.05, 1],
+              textShadow: [
+                "0 0 20px rgba(255,255,255,0.5)",
+                "0 0 40px rgba(255,255,255,0.8)",
+                "0 0 20px rgba(255,255,255,0.5)"
+              ]
+            }}
+            transition={{ duration: 1, repeat: Infinity }}
+            className="text-5xl font-bold text-white mb-8"
+          >
+            🎲 STARTING IN {timeLeft} 🎲
+          </motion.h2>
+        ) : (
+          <motion.h2
+            animate={{ 
+              scale: [1, 1.05, 1],
+              textShadow: [
+                "0 0 20px rgba(255,255,255,0.5)",
+                "0 0 40px rgba(255,255,255,0.8)",
+                "0 0 20px rgba(255,255,255,0.5)"
+              ]
+            }}
+            transition={{ duration: 1, repeat: Infinity }}
+            className="text-5xl font-bold text-white mb-8"
+          >
+            🎲 DRAWING WINNERS 🎲
+          </motion.h2>
+        )}
 
-        <div className="bg-white/20 backdrop-blur-xl rounded-2xl p-8 border border-white/30 min-w-[400px]">
+        <div className="bg-white/20 backdrop-blur-xl rounded-2xl p-8 border border-white/30 min-w-[500px] max-w-[600px]">
           <motion.div
             key={currentName}
             initial={{ y: 50, opacity: 0, scale: 0.8 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: -50, opacity: 0, scale: 0.8 }}
             transition={{ duration: 0.3 }}
-            className="text-3xl font-bold text-white"
+            className="text-2xl md:text-3xl font-bold text-white break-words leading-tight"
           >
             {currentName || 'Preparing...'}
           </motion.div>
@@ -128,7 +171,7 @@ export const NameScrolling: React.FC<NameScrollingProps> = ({
           transition={{ duration: 1.5, repeat: Infinity }}
           className="text-white/80 mt-6 text-lg"
         >
-          ✨ The magic is happening... ✨
+          {phase === 'delay' ? '✨ Building suspense... ✨' : '✨ The magic is happening... ✨'}
         </motion.p>
       </div>
     </div>
